@@ -53,6 +53,7 @@ jobs:
           ITEMS: ${{ inputs.items }}
         run: |
           go build -o fsa .
+          ./scripts/limited-stock.sh ./fsa data/limited-stock.json || true
           ./fsa prices -source blizzard -house "$HOUSE"
           ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -top 15
           for id in ${ITEMS//,/ }; do

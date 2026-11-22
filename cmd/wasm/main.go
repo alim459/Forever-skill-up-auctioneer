@@ -47,6 +47,17 @@ func main() {
 		db = d
 		return ""
 	}))
+	js.Global().Set("fsaLoadLimited", js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if db == nil {
+			return "recipes not loaded"
+		}
+		l, err := recipes.ParseLimitedStock([]byte(args[0].String()))
+		if err != nil {
+			return err.Error()
+		}
+		db.Limited = l
+		return ""
+	}))
 	js.Global().Set("fsaLoadPrices", js.FuncOf(func(_ js.Value, args []js.Value) any {
 		var s auction.Snapshot
 		if err := json.Unmarshal([]byte(args[0].String()), &s); err != nil {

@@ -104,14 +104,28 @@ const ago = t => { const m = Math.round((Date.now()-new Date(t))/60000); return 
 function save(){ try{ localStorage.setItem('fsa', JSON.stringify({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value, house:$('#house').value})); }catch(e){} }
 function knownSet(){ try{ return new Set(JSON.parse(localStorage.getItem('fsa-known')||'[]')); }catch(e){ return new Set(); } }
 function setKnown(id, on){ const k = knownSet(); on ? k.add(id) : k.delete(id); try{ localStorage.setItem('fsa-known', JSON.stringify([...k])); }catch(e){} }
+function restockText(sec){
+  if (!sec) return '?';
+  const h = Math.floor(sec / 3600), m = Math.round(sec % 3600 / 60);
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+function stockText(o){
+  return o.patternStock ? `limited: ${o.patternStock.max} in stock, restocks every ${restockText(o.patternStock.restock)}` : '';
+}
 function learnText(o){
+  let t;
   switch (o.learnHow) {
     case 'known': return 'known';
-    case 'vendor': return gold(o.learnCost) + ' <span class="status">vendor</span>';
-    case 'ah': return gold(o.learnCost) + ' <span class="status">AH</span>';
-    case 'trainer': return '<span class="status">trainer</span>';
+    case 'vendor': t = gold(o.learnCost) + ' <span class="status">vendor</span>'; break;
+    case 'ah': t = gold(o.learnCost) + ' <span class="status">AH</span>'; break;
+    case 'trainer': t = '<span class="status">trainer</span>'; break;
+    default: t = '<span class="status">?</span>';
   }
-  return '<span class="status">?</span>';
+  if (o.patternStock) t += ` <span class="warn" title="${esc(stockText(o))}">⏱</span>`;
+  return t;
+}
+function patternAHText(o){
+  return o.patternAH ? `${gold(o.patternAH)} <span class="status">×${o.patternAHListed}</span>` : '<span class="status">none listed</span>';
 }
 function restore(){ try{ return JSON.parse(localStorage.getItem('fsa')||'{}'); }catch(e){ return {}; } }
 
@@ -164,6 +178,7 @@ async function staticBoot(){
     fetchOK(RECIPES_URL).then(r => r.text()),
     fetchOK('data/houses.json', {cache: 'no-cache'}).then(r => r.json())]);
   const err = fsaLoadRecipes(recText); if (err) throw new Error(err);
+  try { const r = await fetch('data/limited-stock.json', {cache: 'no-cache'}); if (r.ok) fsaLoadLimited(await r.text()); } catch (e) {}
   houses = (hs.houses || []).map(h => ({...h, ...houseInfo(h)}))
     .sort((a, b) => a.order - b.order || (FACTION_ORDER[a.faction] ?? 9) - (FACTION_ORDER[b.faction] ?? 9));
   if (!houses.length) throw new Error('No auction house data published yet');
@@ -318,7 +333,7 @@ function optionRows(list, cols, id){
     <tr class="detail" id="${id}-${i}" hidden><td colspan="${cols.length}"><div class="detail-wrap">
       ${tipHTML(o.item)}<div>
       <b>Reagents:</b> ${reagentText(o) || 'none'}<br>
-      <b>Pattern:</b> ${o.learnHow==='known' ? 'you know it' : o.learnPriced ? gold(o.learnCost)+' ('+(o.learnHow==='ah'?'AH':'vendor')+(o.teachName? ', '+itemName(o.teachItem, o.teachName):'')+')' : o.learnHow==='trainer' ? 'trainer (fee not in data)' : 'no source data'}${o.sourceNames && o.sourceNames.length ? ' · from '+esc(o.sourceNames.join(', ')) : ''}<br>
+      <b>Pattern:</b> ${o.learnHow==='known' ? 'you know it' : o.learnPriced ? gold(o.learnCost)+' ('+(o.learnHow==='ah'?'AH':'vendor')+(o.teachName? ', '+itemName(o.teachItem, o.teachName):'')+')' : o.learnHow==='trainer' ? 'trainer (fee not in data)' : 'no source data'}${o.sourceNames && o.sourceNames.length ? ' · from '+esc(o.sourceNames.join(', ')) : ''}${o.patternStock ? ` · <span class="warn">⏱ ${esc(stockText(o))}</span>` : ''}${o.teachItem && o.learnHow!=='known' ? ' · on AH: '+patternAHText(o) : ''}<br>
       Learn at ${o.required} · source: ${esc(o.sources)}${o.ahUnit? ' · AH price '+gold(o.ahUnit)+' each, '+o.listed+' listed' : ''}${o.soldPerDay!=null? ' · ~'+o.soldPerDay.toFixed(1)+' sold/day':''}
     </div>${o.item ? `<div class="hist" data-item="${o.item}"></div>` : ''}</div></td></tr>`).join('');
 }
@@ -350,7 +365,10 @@ function render(d){
   if (!plan.steps.length) planRows = `<tr><td colspan="8" class="note">No plan possible.</td></tr>`;
   const recs = plan.recipes || [];
   const recipeRows = recs.map(o => `<tr><td><label style="flex-direction:row;align-items:center;gap:6px;color:var(--text)"><input type="checkbox" class="known" data-id="${o.spellId}" ${o.learnHow==='known'?'checked':''}> ${itemName(o.item, o.name)}</label></td>
-    <td class="num">${o.learnHow==='known' ? '—' : learnText(o)}</td><td>${o.teachName ? itemName(o.teachItem, o.teachName) : ''}</td><td>${esc((o.sourceNames||[]).join(', '))}</td></tr>`).join('');
+    <td class="num">${o.learnHow==='known' ? '—' : learnText(o)}</td>
+    <td>${o.patternStock ? `<span class="warn">⏱ ${o.patternStock.max} in stock · ${restockText(o.patternStock.restock)}</span>` : (o.learnHow==='vendor' ? '<span class="status">unlimited</span>' : '')}</td>
+    <td class="num">${o.teachItem ? patternAHText(o) : ''}</td>
+    <td>${esc((o.sourceNames||[]).join(', '))}</td></tr>`).join('');
 
   $('#out').innerHTML = `
   <div class="grid">
@@ -368,8 +386,8 @@ function render(d){
     ${plan.stuckAt? `<div class="warn">Stopped at ${plan.stuckAt}: no priced recipe gives a skill-up there. Try allowing more recipe sources.</div>`:''}
     <div class="totals"><span>Patterns: <b>${gold(plan.recipeCost)}</b></span><span>Materials: <b>${gold(plan.cost)}</b></span><span>Sell back: <b>${gold(plan.sale)}</b></span><span>Net: <b>${signed(plan.net)}</b></span></div>
     ${recs.length ? `<h2 style="margin-top:16px">Recipes this plan uses</h2><div class="scroll"><table>
-      <tr><th>Recipe (tick the ones you know)</th><th class="num">Cost</th><th>Pattern item</th><th>Sold / taught by</th></tr>${recipeRows}</table></div>
-      <div class="note">Patterns count at the cheaper of the vendor or the AH. Trainer fees aren't in the data, so they're not included. Ticking a recipe re-plans without its cost (remembered on this device).</div>`:''}
+      <tr><th>Recipe (tick the ones you know)</th><th class="num">Cost</th><th>Vendor stock</th><th class="num">Pattern on AH</th><th>Sold / taught by</th></tr>${recipeRows}</table></div>
+      <div class="note">Patterns count at the cheaper of the vendor or the AH. ⏱ = the vendor sells only a few and restocks on a timer (Classic vendor data, may differ in Forever), so expect resellers to mark it up on the AH. Trainer fees aren't in the data, so they're not included. Ticking a recipe re-plans without its cost (remembered on this device).</div>`:''}
     ${plan.shopping && plan.shopping.length ? `<h2 style="margin-top:16px">Shopping list</h2><div class="scroll"><table>
       <tr><th class="num">Qty</th><th>Item</th><th class="num">Each</th><th>From</th><th class="num">Total</th></tr>
       ${plan.shopping.map(l=>`<tr><td class="num">${l.count}</td><td>${itemName(l.item, l.name)}</td><td class="num">${gold(l.unit)}</td><td>${l.source}</td><td class="num">${gold(l.total)}</td></tr>`).join('')}

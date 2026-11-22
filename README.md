@@ -44,6 +44,8 @@ The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the 
 
 - Price history: every hourly run appends the snapshot's market price for each craftable item and reagent to `history-<region>-<house>.json` (kept in the Actions cache: hourly for 7 days, then daily, up to 120 days). Open a row to see the item's price chart. Locally, run `history` after `prices` to build the same file.
 
+- Pattern availability: patterns are flagged ⏱ when the vendor sells only a few and restocks on a timer, with the restock time, alongside the pattern's AH price and supply. Limited stock comes from [CMaNGOS classic-db](https://github.com/cmangos/classic-db) (GPL-3.0) vendor tables, so it's Classic data and Forever may differ; it is downloaded at build time (`scripts/limited-stock.sh`, `vendorstock` command), not bundled.
+
 One-time setup:
 
 1. **Settings → Pages → Build and deployment → Source: "GitHub Actions".**

@@ -97,6 +97,11 @@ if [ ${#entries[@]} -eq 0 ]; then
   fi
   exit 1
 fi
+# Limited-stock vendor patterns (cached; refreshed weekly).
+LIMITED="${LIMITED_CACHE:-.cache/limited-stock.json}"
+./scripts/limited-stock.sh ./bin/fsa "$LIMITED" || echo "limited stock: build failed"
+[ -f "$LIMITED" ] && cp "$LIMITED" "$OUT/data/limited-stock.json"
+
 # Item tooltips (stats) from Blizzard, cached between runs in $ITEM_CACHE so
 # only new items are fetched.
 ITEM_CACHE="${ITEM_CACHE:-.cache/items.json}"

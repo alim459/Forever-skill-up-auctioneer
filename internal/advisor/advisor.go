@@ -177,8 +177,13 @@ type Option struct {
 	TeachItem   int      `json:"teachItem,omitempty"`
 	TeachName   string   `json:"teachName,omitempty"`
 	SourceNames []string `json:"sourceNames,omitempty"` // e.g. vendor or trainer NPCs
-	SoldPerDay  *float64 `json:"soldPerDay,omitempty"`  // when the source knows it
-	AHUnit      float64  `json:"ahUnit"`                // AH market price of the product
+	// PatternStock is set when the vendor sells the pattern in limited
+	// quantity; PatternAH/PatternAHListed give its AH price and supply.
+	PatternStock    *recipes.Stock `json:"patternStock,omitempty"`
+	PatternAH       float64        `json:"patternAH,omitempty"`
+	PatternAHListed int64          `json:"patternAHListed,omitempty"`
+	SoldPerDay      *float64       `json:"soldPerDay,omitempty"` // when the source knows it
+	AHUnit          float64        `json:"ahUnit"`               // AH market price of the product
 }
 
 // Evaluate prices one recipe at a skill level.
@@ -242,6 +247,14 @@ func (a *Advisor) learnCost(r *recipes.Recipe, o *Option) {
 	o.SourceNames = r.SourceNames
 	if r.TeachItem > 0 {
 		o.TeachName = a.DB.ItemName(r.TeachItem)
+	}
+	if r.TeachItem > 0 {
+		if st, ok := a.DB.Limited[r.TeachItem]; ok && strings.ContainsRune(r.Sources, 'v') {
+			o.PatternStock = &st
+		}
+		if p, ok := a.Prices.Lookup(r.TeachItem); ok {
+			o.PatternAH, o.PatternAHListed = float64(p.Market), p.Quantity
+		}
 	}
 	if a.Opt.Known[r.SpellID] {
 		o.LearnHow, o.LearnPriced = "known", true

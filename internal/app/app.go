@@ -65,6 +65,9 @@ func (a *App) Recipes(ctx context.Context) (*recipes.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if l, err := recipes.LoadLimitedStock(filepath.Join(a.Cfg.DataDir, "limited-stock.json")); err == nil {
+		db.Limited = l
+	}
 	a.db = db
 	return db, nil
 }

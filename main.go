@@ -65,6 +65,8 @@ func main() {
 		err = runPrices(ctx, args)
 	case "recipes":
 		err = runRecipes(ctx, args)
+	case "vendorstock":
+		err = runVendorStock(args)
 	case "history":
 		err = runHistory(ctx, args)
 	case "items":
@@ -133,6 +135,35 @@ func runPrices(ctx context.Context, args []string) error {
 	fmt.Printf("Fetched %d priced items from %s (house %d, %s, snapshot %s).\n",
 		len(snap.Items), snap.Source, snap.House, strings.ToUpper(snap.Region), snap.Updated.Local().Format(time.RFC822))
 	fmt.Printf("Raw JSON saved under %s/raw/, prices under %s/.\n", a.Cfg.DataDir, a.Cfg.DataDir)
+	return nil
+}
+
+// runVendorStock builds data/limited-stock.json from a CMaNGOS classic-db
+// world dump (https://github.com/cmangos/classic-db, Full_DB/*.sql.gz).
+func runVendorStock(args []string) error {
+	fs := flag.NewFlagSet("vendorstock", flag.ExitOnError)
+	sql := fs.String("sql", "", "path to the classic-db dump (.sql or .sql.gz)")
+	out := fs.String("out", filepath.Join(envOr("FOREVER_DATA_DIR", "data"), "limited-stock.json"), "output file")
+	fs.Parse(args)
+	if *sql == "" {
+		return fmt.Errorf("-sql is required")
+	}
+	f, err := os.Open(*sql)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	l, err := recipes.ParseVendorSQL(f)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
+		return err
+	}
+	if err := l.SaveJSON(*out); err != nil {
+		return err
+	}
+	fmt.Printf("Limited-stock vendor items: %d written to %s\n", len(l), *out)
 	return nil
 }
 
@@ -430,15 +461,36 @@ func saleStr(o advisor.Option) string {
 }
 
 func learnStr(o advisor.Option) string {
+	var s string
 	switch o.LearnHow {
 	case "known":
 		return "known"
 	case "vendor", "ah":
-		return money.Format(o.LearnCost) + " (" + o.LearnHow + ")"
+		s = money.Format(o.LearnCost) + " (" + o.LearnHow + ")"
 	case "trainer":
-		return "trainer (fee not in data)"
+		s = "trainer (fee not in data)"
+	default:
+		s = "unknown source"
 	}
-	return "unknown source"
+	if o.PatternStock != nil {
+		s += fmt.Sprintf(", limited %d/%s", o.PatternStock.Max, restockStr(o.PatternStock.Restock))
+	}
+	if o.PatternAH > 0 && o.LearnHow != "ah" {
+		s += fmt.Sprintf(", AH %s x%d", money.Format(o.PatternAH), o.PatternAHListed)
+	}
+	return s
+}
+
+func restockStr(sec int) string {
+	switch {
+	case sec <= 0:
+		return "?"
+	case sec%3600 == 0:
+		return fmt.Sprintf("%dh", sec/3600)
+	case sec >= 3600:
+		return fmt.Sprintf("%dh%02dm", sec/3600, sec%3600/60)
+	}
+	return fmt.Sprintf("%dm", sec/60)
 }
 
 func listed(o advisor.Option) string {

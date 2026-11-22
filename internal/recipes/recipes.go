@@ -133,6 +133,9 @@ type DB struct {
 	ClientBuild string
 	Professions map[int]*Profession
 	Items       map[int]*Item
+	// Limited holds vendor items sold in limited quantity (Classic vendor
+	// data from CMaNGOS; may differ in Forever). Optional.
+	Limited LimitedStock
 }
 
 // Item returns item data or nil.
