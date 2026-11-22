@@ -61,6 +61,10 @@ done
 
 if [ ${#entries[@]} -eq 0 ]; then
   echo "No auction house data could be fetched; not publishing." >&2
+  if [ -z "${BLIZZARD_CLIENT_ID:-}" ]; then
+    echo "Add BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET as repository secrets (Settings > Secrets and variables > Actions)." >&2
+    echo "Forever Goblin blocks requests from GitHub's servers, so Blizzard keys are required for the hosted site." >&2
+  fi
   exit 1
 fi
 ( IFS=,; echo "{\"updated\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"houses\":[${entries[*]}]}" ) > "$OUT/data/houses.json"

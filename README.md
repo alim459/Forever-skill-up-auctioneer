@@ -43,7 +43,7 @@ The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the 
 One-time setup:
 
 1. **Settings → Pages → Build and deployment → Source: "GitHub Actions".**
-2. *(Recommended)* **Settings → Secrets and variables → Actions → New repository secret**: add `BLIZZARD_CLIENT_ID` and `BLIZZARD_CLIENT_SECRET` (free at https://develop.battle.net/access/clients). Without them the site uses Forever Goblin.
+2. **Settings → Secrets and variables → Actions → New repository secret**: add `BLIZZARD_CLIENT_ID` and `BLIZZARD_CLIENT_SECRET` (free at https://develop.battle.net/access/clients). **Required for hosting.** Forever Goblin's bot protection blocks GitHub's servers, so the no-key fallback only works when you run the app on your own computer.
 3. **Actions → "Update AH prices and publish site" → Run workflow** (after that it runs hourly by itself).
 4. Open `https://<your-user>.github.io/<repo-name>/`; the deploy job also shows the link.
 

@@ -1,6 +1,7 @@
 package auction
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,6 +53,9 @@ func (g *Goblin) Fetch(ctx context.Context) (*Snapshot, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode == http.StatusForbidden && bytes.Contains(body, []byte("Just a moment")) {
+		return nil, fmt.Errorf("goblin: blocked by the site's bot protection (common from cloud servers); use Blizzard API keys instead")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("goblin: HTTP %d: %s", resp.StatusCode, truncate(body))
