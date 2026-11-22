@@ -38,7 +38,7 @@ The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the 
 
 - Every hour it fetches a fresh snapshot for every Forever auction house it can find and publishes them as JSON.
 - The advisor is compiled to WebAssembly and runs in your browser, so no server is needed.
-- The page has an "Auction house" picker labelled by faction and ruleset, defaulting to **Alliance · PvP**. Faction comes from Blizzard's house names. Houses come in groups of three (Alliance/Horde/Blackwater): 110/113/116 are labelled PvP and 111/114/117 Normal (114 = Normal Horde is community-confirmed; the rest is inferred from ruleset id order). 112/115/118 would be Roleplay but currently return no data, and 119–121 and 123–125 aren't identified yet. Edit `HOUSE_GROUPS` in `internal/web/static/index.html` if in-game prices show otherwise.
+- The page has an "Auction house" picker labelled by faction and ruleset, defaulting to **Alliance · PvP**. Faction comes from Blizzard's house names. Blizzard lists four rulesets (1 PvP, 2 Normal, 3 Roleplay, 15 Roleplay PvP) but every ruleset lists every house, so the ruleset labels are inferred: houses come in groups of three (Alliance/Horde/Blackwater) and the four groups with data are matched to the rulesets in order. That gives 110/113/116 PvP, 111/114/117 Normal (114 = Normal Horde is community-confirmed), 119–121 Roleplay and 123–125 Roleplay PvP; 112/115/118 return no data. If in-game prices show otherwise, edit `HOUSE_GROUPS` in `internal/web/static/index.html`.
 
 One-time setup:
 
