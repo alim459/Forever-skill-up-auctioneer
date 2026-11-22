@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/alim459/forever-skill-up-auctioneer/internal/app"
@@ -28,6 +29,10 @@ func Static() fs.FS {
 func Handler(a *app.App) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(Static()))
+	// Item tooltips, if cached with the "items" command.
+	mux.HandleFunc("GET /data/items.json", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(a.Cfg.DataDir, "items.json"))
+	})
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		db, err := a.Recipes(r.Context())

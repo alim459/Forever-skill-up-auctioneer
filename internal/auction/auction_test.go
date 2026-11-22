@@ -113,3 +113,60 @@ func TestGoblinFetch(t *testing.T) {
 		t.Fatal("missing soldPerDay should be nil")
 	}
 }
+
+func TestTooltip(t *testing.T) {
+	body := []byte(`{"id":2569,"name":"Linen Cloak","quality":{"type":"COMMON","name":"Common"},
+	"preview_item":{"name":"Linen Cloak","quality":{"type":"COMMON","name":"Common"},
+	"binding":{"type":"ON_EQUIP","name":"Binds when equipped"},
+	"inventory_type":{"type":"CLOAK","name":"Back"},"item_subclass":{"name":"Cloth"},
+	"armor":{"value":9,"display":{"display_string":"9 Armor","color":{"r":255,"g":255,"b":255,"a":1}}},
+	"stats":[{"value":1,"display":{"display_string":"+1 Stamina","color":{"r":255,"g":255,"b":255,"a":1}}}],
+	"spells":[{"description":"Equip: Something nice."}],
+	"durability":{"display_string":"Durability 20 / 20"},
+	"requirements":{"level":{"value":5,"display_string":"Requires Level 5"}}}}`)
+	info, err := tooltip(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range info.Lines {
+		got = append(got, l.Text)
+	}
+	want := []string{"Linen Cloak", "Binds when equipped", "Back\tCloth", "9 Armor", "+1 Stamina", "Durability 20 / 20", "Requires Level 5", "Equip: Something nice."}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("line %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if info.Lines[3].Color != "#ffffff" || info.Lines[0].Color != "#ffffff" {
+		t.Fatalf("colors %+v", info.Lines)
+	}
+}
+
+func TestFetchItems(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"access_token":"tok"}`)) })
+	mux.HandleFunc("GET /data/wow/item/1", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("namespace") != "static-forever-us" {
+			http.Error(w, "ns", 400)
+			return
+		}
+		w.Write([]byte(`{"name":"A","preview_item":{"name":"A","quality":{"type":"RARE"}}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	b := &Blizzard{ClientID: "x", ClientSecret: "y", Target: Target{"us", 2, 1}, APIBase: srv.URL, OAuthURL: srv.URL + "/token"}
+	cache := ItemCache{}
+	got, failed, err := b.FetchItems(context.Background(), cache, []int{1, 2}, 2, nil)
+	if err != nil || got != 1 || failed != 1 || cache[1].Name != "A" || !cache[2].Missing || cache[1].Lines[0].Color != "#0070dd" {
+		t.Fatalf("got=%d failed=%d err=%v cache=%+v", got, failed, err, cache)
+	}
+	// second run fetches nothing new
+	got, _, _ = b.FetchItems(context.Background(), cache, []int{1, 2}, 2, nil)
+	if got != 0 {
+		t.Fatal("refetched cached item")
+	}
+}

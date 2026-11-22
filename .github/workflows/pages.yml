@@ -24,6 +24,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Restore item tooltip cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: items-${{ github.run_id }}
+          restore-keys: items-
       - name: Test
         run: go test ./...
       - name: Fetch prices and build site

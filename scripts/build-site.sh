@@ -91,6 +91,14 @@ if [ ${#entries[@]} -eq 0 ]; then
   fi
   exit 1
 fi
+# Item tooltips (stats) from Blizzard, cached between runs in $ITEM_CACHE so
+# only new items are fetched.
+ITEM_CACHE="${ITEM_CACHE:-.cache/items.json}"
+if [ -n "${BLIZZARD_CLIENT_ID:-}" ] && [ -n "${BLIZZARD_CLIENT_SECRET:-}" ]; then
+  ./bin/fsa items -data "$WORK" -region "$REGION" -out "$ITEM_CACHE" || echo "item tooltips: fetch failed (keeping cache)"
+fi
+[ -f "$ITEM_CACHE" ] && cp "$ITEM_CACHE" "$OUT/data/items.json"
+
 ( IFS=,; echo "{\"updated\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"houses\":[${entries[*]}]}" ) > "$OUT/data/houses.json"
 touch "$OUT/.nojekyll"
 echo "Site built in $OUT with ${#entries[@]} auction houses."

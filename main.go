@@ -5,10 +5,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -63,6 +65,8 @@ func main() {
 		err = runPrices(ctx, args)
 	case "recipes":
 		err = runRecipes(ctx, args)
+	case "items":
+		err = runItems(ctx, args)
 	case "api":
 		err = runAPI(ctx, args)
 	case "professions":
@@ -128,6 +132,61 @@ func runPrices(ctx context.Context, args []string) error {
 		len(snap.Items), snap.Source, snap.House, strings.ToUpper(snap.Region), snap.Updated.Local().Format(time.RFC822))
 	fmt.Printf("Raw JSON saved under %s/raw/, prices under %s/.\n", a.Cfg.DataDir, a.Cfg.DataDir)
 	return nil
+}
+
+// runItems caches Blizzard item tooltips (stats) for every crafted item and
+// reagent in the recipe data.
+func runItems(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("items", flag.ExitOnError)
+	cfg := commonFlags(fs)
+	out := fs.String("out", "", "cache file (default <data>/items.json)")
+	workers := fs.Int("workers", 8, "parallel requests")
+	limit := fs.Duration("timeout", 8*time.Minute, "stop after this long (progress is kept)")
+	fs.Parse(args)
+	c := cfg()
+	if *out == "" {
+		*out = filepath.Join(c.DataDir, "items.json")
+	}
+	db, err := app.New(c).Recipes(ctx)
+	if err != nil {
+		return err
+	}
+	seen := map[int]bool{}
+	var ids []int
+	for _, p := range db.Professions {
+		for _, r := range p.Recipes {
+			for _, id := range append([]int{r.CraftedItem}, reagentIDs(r)...) {
+				if id > 0 && !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+		}
+	}
+	cache, err := auction.LoadItemCache(*out)
+	if err != nil {
+		return err
+	}
+	tctx, cancel := context.WithTimeout(ctx, *limit)
+	defer cancel()
+	b := &auction.Blizzard{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Target: c.Target}
+	got, failed, ferr := b.FetchItems(tctx, cache, ids, *workers, os.Stderr)
+	if err := cache.Save(*out); err != nil {
+		return err
+	}
+	fmt.Printf("Item tooltips: %d items known, %d fetched now, %d failed/missing.\n", len(cache), got, failed)
+	if ferr != nil && !errors.Is(ferr, context.DeadlineExceeded) {
+		return ferr
+	}
+	return nil
+}
+
+func reagentIDs(r *recipes.Recipe) []int {
+	var out []int
+	for _, g := range r.Reagents {
+		out = append(out, g.Item)
+	}
+	return out
 }
 
 // runAPI prints a raw Game Data API response (diagnostics).

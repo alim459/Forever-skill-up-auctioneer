@@ -5,3 +5,4 @@
 .env
 /site/
 /bin/
+/.cache/

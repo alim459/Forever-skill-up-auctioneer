@@ -40,6 +40,8 @@ The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the 
 - The advisor is compiled to WebAssembly and runs in your browser, so no server is needed.
 - The page has an "Auction house" picker labelled by faction and ruleset, defaulting to **Alliance · PvP**. Faction comes from Blizzard's house names. Blizzard lists four rulesets (1 PvP, 2 Normal, 3 Roleplay, 15 Roleplay PvP) but every ruleset lists every house, so the ruleset labels are inferred: houses come in groups of three (Alliance/Horde/Blackwater) and the four groups with data are matched to the rulesets in order. That gives 110/113/116 PvP, 111/114/117 Normal (114 = Normal Horde is community-confirmed), 119–121 Roleplay and 123–125 Roleplay PvP; 112/115/118 return no data. If in-game prices show otherwise, edit `HOUSE_GROUPS` in `internal/web/static/index.html`.
 
+- Item stats: the workflow caches Blizzard's item tooltips (`/data/wow/item/{id}`, namespace `static-forever-{region}`) for every craftable item and reagent. Hover a recipe name to see the item's stats, or tap a row on a phone. Run `items` locally to get the same in `serve` mode.
+
 One-time setup:
 
 1. **Settings → Pages → Build and deployment → Source: "GitHub Actions".**

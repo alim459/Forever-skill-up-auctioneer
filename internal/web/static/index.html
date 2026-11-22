@@ -40,6 +40,13 @@ tr.detail td{background:#17130e;white-space:normal;color:var(--muted);font-size:
 .warn{color:var(--yellow);font-size:12px}
 .note{color:var(--muted);font-size:12px;margin-top:8px}
 .err{color:var(--bad)}
+.item{border-bottom:1px dotted var(--muted);cursor:help}
+.tip{background:#070b1a;border:1px solid #5b6178;border-radius:6px;padding:8px 10px;font-size:13px;line-height:1.4;color:#fff;min-width:200px;max-width:320px;white-space:normal}
+.tip .l{display:flex;justify-content:space-between;gap:16px}
+#tip{position:fixed;z-index:50;pointer-events:none;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.detail-wrap{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;position:sticky;left:8px;max-width:calc(100vw - 90px)}
+.detail-wrap>div{flex:1 1 260px;min-width:0}
+.detail-wrap>.tip{flex:0 1 300px}
 .grid{display:grid;grid-template-columns:1fr;gap:16px}
 @media(min-width:1000px){.grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 </style>
@@ -174,6 +181,7 @@ function showStatus(p){
 async function init(){
   try{
     if (STATIC) { staticReady = staticBoot(); await staticReady; }
+    loadItems(); setupHover();
     const s = await api('/api/status');
     const saved = restore();
     $('#prof').innerHTML = s.professions.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
@@ -184,18 +192,53 @@ async function init(){
   }catch(e){ $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 
+// --- Item tooltips (stats from Blizzard's item API, cached in data/items.json)
+let ITEMS = {};
+async function loadItems(){
+  try{ const r = await fetch(STATIC ? 'data/items.json' : '/data/items.json', {cache:'no-cache'}); if (r.ok) ITEMS = await r.json(); }catch(e){}
+}
+function tipHTML(id){
+  const it = ITEMS[id];
+  if (!it || !it.lines || !it.lines.length) return '';
+  return '<div class="tip">' + it.lines.map(l => {
+    const parts = String(l.t).split('\t').map(p => `<span>${esc(p)}</span>`).join('');
+    return `<div class="l" style="${l.c ? 'color:'+l.c : ''}">${parts}</div>`;
+  }).join('') + '</div>';
+}
+const itemName = (id, name) => id && ITEMS[id] && ITEMS[id].lines ? `<span class="item" data-item="${id}">${esc(name)}</span>` : esc(name);
+const CAN_HOVER = window.matchMedia && matchMedia('(hover: hover)').matches;
+function setupHover(){
+  if (!CAN_HOVER) return;
+  const tip = document.createElement('div'); tip.id = 'tip'; tip.hidden = true; document.body.appendChild(tip);
+  document.addEventListener('mouseover', e => {
+    const el = e.target.closest && e.target.closest('.item');
+    if (!el) { tip.hidden = true; return; }
+    const h = tipHTML(el.dataset.item); if (!h) return;
+    tip.innerHTML = h; tip.hidden = false;
+  });
+  document.addEventListener('mousemove', e => {
+    if (tip.hidden) return;
+    const w = tip.offsetWidth, hgt = tip.offsetHeight;
+    let x = e.clientX + 16, y = e.clientY + 16;
+    if (x + w > innerWidth - 8) x = e.clientX - w - 16;
+    if (y + hgt > innerHeight - 8) y = Math.max(8, innerHeight - hgt - 8);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  });
+}
+
 function reagentText(o){
-  return o.reagents.map(g => `${g.count}× ${esc(g.name)} @ ${g.priced? gold(g.unit)+' ('+g.source+')' : '<span class="err">no price</span>'}`).join(' · ');
+  return o.reagents.map(g => `${g.count}× ${itemName(g.item, g.name)} @ ${g.priced? gold(g.unit)+' ('+g.source+')' : '<span class="err">no price</span>'}`).join(' · ');
 }
 
 function optionRows(list, cols, id){
   if (!list.length) return `<tr><td colspan="${cols.length}" class="note">Nothing here with these settings.</td></tr>`;
   return list.slice(0, 25).map((o,i) => `
     <tr class="click" data-t="${id}-${i}">${cols.map(c => c.f(o)).join('')}</tr>
-    <tr class="detail" id="${id}-${i}" hidden><td colspan="${cols.length}">
+    <tr class="detail" id="${id}-${i}" hidden><td colspan="${cols.length}"><div class="detail-wrap">
+      ${tipHTML(o.item)}<div>
       <b>Reagents:</b> ${reagentText(o) || 'none'}<br>
       Learn at ${o.required} · source: ${esc(o.sources)}${o.ahUnit? ' · AH price '+gold(o.ahUnit)+' each, '+o.listed+' listed' : ''}${o.soldPerDay!=null? ' · ~'+o.soldPerDay.toFixed(1)+' sold/day':''}
-    </td></tr>`).join('');
+    </div></div></td></tr>`).join('');
 }
 
 const td = (v, cls='') => `<td class="${cls}">${v}</td>`;
@@ -208,18 +251,18 @@ function render(d){
   plan.steps = plan.steps || []; plan.shopping = plan.shopping || [];
   for (const o of [...rec.skillUps, ...rec.profit, ...rec.unpriced, ...plan.steps.map(s=>s.option)]) o.reagents = o.reagents || [];
   const skillCols = [
-    {h:'Recipe', f:o=>td(esc(o.name))}, {h:'Colour', f:colCol},
+    {h:'Recipe', f:o=>td(itemName(o.item, o.name))}, {h:'Colour', f:colCol},
     {h:'Chance', f:o=>td(pct(o.chance),'num')}, {h:'Mats', f:o=>td(gold(o.cost),'num')},
     {h:'Sells for', f:saleCell}, {h:'Profit', f:o=>td(signed(o.profit),'num')},
     {h:'Net / point', f:o=>td(signed(-o.costPerPoint),'num')}];
   const profitCols = [
-    {h:'Recipe', f:o=>td(esc(o.name))}, {h:'Colour', f:colCol},
+    {h:'Recipe', f:o=>td(itemName(o.item, o.name))}, {h:'Colour', f:colCol},
     {h:'Mats', f:o=>td(gold(o.cost),'num')}, {h:'Sells for', f:saleCell},
     {h:'Profit', f:o=>td(signed(o.profit),'num')}, {h:'Listed', f:o=>td(o.listed,'num')}];
   const head = cols => '<tr>'+cols.map(c=>`<th class="${c.h==='Recipe'||c.h==='Colour'?'':'num'}">${c.h}</th>`).join('')+'</tr>';
 
   let planRows = plan.steps.map(s => `
-    <tr><td>${s.from}–${s.to}</td><td>${esc(s.option.name)}</td><td class="c-${s.option.colour}">${s.option.colour}</td>
+    <tr><td>${s.from}–${s.to}</td><td>${itemName(s.option.item, s.option.name)}</td><td class="c-${s.option.colour}">${s.option.colour}</td>
     <td class="num">${s.crafts}</td><td class="num">${gold(s.cost)}</td><td class="num">${gold(s.sale)}</td><td class="num">${signed(s.net)}</td></tr>
     ${s.trainNote||s.warnings? `<tr class="detail"><td></td><td colspan="6">${s.trainNote? '↳ '+esc(s.trainNote)+' ':''}${(s.warnings||[]).map(w=>`<span class="warn">⚠ ${esc(w)}</span>`).join(' ')}</td></tr>`:''}`).join('');
   if (!plan.steps.length) planRows = `<tr><td colspan="7" class="note">No plan possible.</td></tr>`;
@@ -241,7 +284,7 @@ function render(d){
     <div class="totals"><span>Materials: <b>${gold(plan.cost)}</b></span><span>Sell back: <b>${gold(plan.sale)}</b></span><span>Net: <b>${signed(plan.net)}</b></span></div>
     ${plan.shopping && plan.shopping.length ? `<h2 style="margin-top:16px">Shopping list</h2><div class="scroll"><table>
       <tr><th class="num">Qty</th><th>Item</th><th class="num">Each</th><th>From</th><th class="num">Total</th></tr>
-      ${plan.shopping.map(l=>`<tr><td class="num">${l.count}</td><td>${esc(l.name)}</td><td class="num">${gold(l.unit)}</td><td>${l.source}</td><td class="num">${gold(l.total)}</td></tr>`).join('')}
+      ${plan.shopping.map(l=>`<tr><td class="num">${l.count}</td><td>${itemName(l.item, l.name)}</td><td class="num">${gold(l.unit)}</td><td>${l.source}</td><td class="num">${gold(l.total)}</td></tr>`).join('')}
     </table></div>`:''}
     <div class="note">Crafts are expected counts: orange always skills up, then the chance falls through yellow and green, (grey − skill) / (grey − yellow). Reagents count at the cheapest of AH market price, vendor price, or crafting them yourself. AH deposits aren't included.</div>
   </div>
