@@ -176,7 +176,7 @@ async function init(){
     if (STATIC) { staticReady = staticBoot(); await staticReady; }
     const s = await api('/api/status');
     const saved = restore();
-    $('#prof').innerHTML = s.professions.map(p => `<option value="${p.id}">${esc(p.name)} (${p.recipes})</option>`).join('');
+    $('#prof').innerHTML = s.professions.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     if (saved.prof) $('#prof').value = saved.prof;
     if (saved.skill) $('#skill').value = saved.skill;
     if (saved.target) $('#target').value = saved.target;
