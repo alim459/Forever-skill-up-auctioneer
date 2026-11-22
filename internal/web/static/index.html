@@ -80,6 +80,10 @@ tr.detail td{background:#17130e;white-space:normal;color:var(--muted);font-size:
         <label><input type="checkbox" data-src="?" checked> unknown</label>
         <label><input type="checkbox" id="cooldowns"> cooldown crafts</label>
       </div>
+      <div class="checks">
+        <label><input type="checkbox" id="vendorOnly"> sell to vendor only (no AH risk)</label>
+        <label><input type="checkbox" id="fewer"> fewer crafts (prefer high skill-up chance)</label>
+      </div>
       <button type="submit">Recommend</button>
       <button type="button" class="secondary" id="refresh">Refresh AH prices</button>
     </form>
@@ -410,7 +414,7 @@ async function recommend(e){
   e && e.preventDefault(); save();
   const btn = $('#f button[type=submit]'); btn.disabled = true;
   const src = [...document.querySelectorAll('[data-src]')].filter(c=>c.checked).map(c=>c.dataset.src).join('');
-  const qs = new URLSearchParams({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value, sources: src || '-', cooldowns: $('#cooldowns').checked?'1':'0', known: [...knownSet()].join(',')});
+  const qs = new URLSearchParams({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value, sources: src || '-', cooldowns: $('#cooldowns').checked?'1':'0', known: [...knownSet()].join(','), sell: $('#vendorOnly').checked ? 'vendor' : 'ah', minChance: $('#fewer').checked ? '0.7' : '0.3'});
   $('#out').innerHTML = '<div class="panel note">Crunching recipes…</div>';
   try{ const d = await api('/api/recommend?'+qs); showStatus(d.prices); render(d); }
   catch(err){ $('#out').innerHTML = `<div class="panel err">${esc(err.message)}</div>`; }
