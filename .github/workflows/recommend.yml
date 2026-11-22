@@ -25,6 +25,14 @@ on:
         description: "Recipe sources: t trainer, v vendor, d drop, q quest, c other, ? unknown, or all"
         required: true
         default: "tv?"
+      sell:
+        description: "How you sell crafts: ah (best of AH and vendor) or vendor (vendor only)"
+        required: true
+        default: "ah"
+      minchance:
+        description: "Avoid recipes below this skill-up chance when possible (0-1; higher = fewer crafts)"
+        required: true
+        default: "0.3"
       items:
         description: "Optional: comma-separated item ids to list every live auction for"
         required: false
@@ -51,11 +59,13 @@ jobs:
           HOUSE: ${{ inputs.house }}
           SOURCES: ${{ inputs.sources }}
           ITEMS: ${{ inputs.items }}
+          SELL: ${{ inputs.sell }}
+          MINCHANCE: ${{ inputs.minchance }}
         run: |
           go build -o fsa .
           ./scripts/limited-stock.sh ./fsa data/limited-stock.json || true
           ./fsa prices -source blizzard -house "$HOUSE"
-          ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -top 15
+          ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -sell "$SELL" -min-chance "$MINCHANCE" -top 15
           for id in ${ITEMS//,/ }; do
             echo
             echo "=== Item $id: every listing on house $HOUSE (copper per item, quantity) ==="

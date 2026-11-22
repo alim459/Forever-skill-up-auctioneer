@@ -323,6 +323,8 @@ func runRecommend(ctx context.Context, args []string) error {
 	known := fs.String("known", "", "comma-separated recipe spell ids you already know (no pattern cost)")
 	cooldowns := fs.Bool("cooldowns", false, "include cooldown crafts (transmutes) in skill-up ranking")
 	noCraft := fs.Bool("no-craft-reagents", false, "don't price reagents at the cost of crafting them yourself")
+	sell := fs.String("sell", "ah", "how you sell crafts: ah (best of AH and vendor) or vendor (vendor only, no AH risk)")
+	minChance := fs.Float64("min-chance", 0.3, "plan avoids recipes below this skill-up chance when possible (higher = fewer crafts)")
 	asJSON := fs.Bool("json", false, "print JSON instead of tables")
 	fs.Parse(args)
 	if *prof == "" {
@@ -351,6 +353,8 @@ func runRecommend(ctx context.Context, args []string) error {
 	}
 	opt.IncludeCooldowns = *cooldowns
 	opt.CraftReagents = !*noCraft
+	opt.VendorOnly = *sell == "vendor"
+	opt.MinChance = *minChance
 	opt.Exclude = parseIDs(*exclude)
 	opt.Known = parseIDs(*known)
 

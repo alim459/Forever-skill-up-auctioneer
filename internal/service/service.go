@@ -62,6 +62,10 @@ func Recommend(db *recipes.DB, snap *auction.Snapshot, q url.Values) (map[string
 	}
 	opt.IncludeCooldowns = q.Get("cooldowns") == "1"
 	opt.CraftReagents = q.Get("noCraft") != "1"
+	opt.VendorOnly = q.Get("sell") == "vendor"
+	if v, err := strconv.ParseFloat(q.Get("minChance"), 64); err == nil && v >= 0 && v <= 1 {
+		opt.MinChance = v
+	}
 	opt.Exclude = map[int]bool{}
 	for _, f := range strings.Split(q.Get("exclude"), ",") {
 		if n, err := strconv.Atoi(strings.TrimSpace(f)); err == nil {

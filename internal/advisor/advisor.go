@@ -34,6 +34,8 @@ type Options struct {
 	// MinChance is the skill-up chance below which the plan only uses a
 	// recipe when nothing better is available (avoids "craft 25 for 1 point").
 	MinChance float64
+	// VendorOnly values every craft at the vendor sell price (no AH risk).
+	VendorOnly bool
 }
 
 // DefaultOptions: trainer, vendor and unknown-source recipes; craft
@@ -219,7 +221,7 @@ func (a *Advisor) Evaluate(r *recipes.Recipe, skill int) Option {
 			vendor = float64(it.VendorSell) * y
 		}
 		switch {
-		case ah > 0 && ah >= vendor:
+		case ah > 0 && ah >= vendor && !a.Opt.VendorOnly:
 			o.Sale, o.SaleHow = ah, "ah"
 		case vendor > 0:
 			o.Sale, o.SaleHow = vendor, "vendor"
@@ -476,7 +478,13 @@ func (a *Advisor) bestAt(skill, to int, used map[int]bool) *Option {
 	}
 	pick(a.Opt.MinChance)
 	if best == nil {
-		pick(0)
+		// Nothing reaches MinChance: stay close to the best chance available
+		// rather than grinding a low-chance recipe because it is cheap.
+		top := 0.0
+		for _, o := range rec.SkillUps {
+			top = max(top, o.Chance)
+		}
+		pick(top * 0.75)
 	}
 	return best
 }
