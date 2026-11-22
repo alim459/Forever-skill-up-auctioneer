@@ -36,13 +36,18 @@ for h in $HOUSES; do
   ok=""
   if [ -n "${BLIZZARD_CLIENT_ID:-}" ] && [ -n "${BLIZZARD_CLIENT_SECRET:-}" ]; then
     for rs in $RULESETS; do
-      if ./bin/fsa prices -data "$WORK" -source blizzard -region "$REGION" -ruleset "$rs" -house "$h" >/dev/null 2>&1; then
+      if err=$(./bin/fsa prices -data "$WORK" -source blizzard -region "$REGION" -ruleset "$rs" -house "$h" 2>&1); then
         ok="$rs"; break
       fi
+      echo "  house $h ruleset $rs (Blizzard): $(echo "$err" | tail -n1)"
     done
   fi
-  if [ -z "$ok" ] && ./bin/fsa prices -data "$WORK" -source goblin -region "$REGION" -house "$h" >/dev/null 2>&1; then
-    ok="0"
+  if [ -z "$ok" ]; then
+    if err=$(./bin/fsa prices -data "$WORK" -source goblin -region "$REGION" -house "$h" 2>&1); then
+      ok="0"
+    else
+      echo "  house $h (Forever Goblin): $(echo "$err" | tail -n1)"
+    fi
   fi
   if [ -n "$ok" ]; then
     f="prices-$REGION-$h.json"
