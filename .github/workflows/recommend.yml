@@ -33,6 +33,10 @@ on:
         description: "Avoid recipes below this skill-up chance when possible (0-1; higher = fewer crafts)"
         required: true
         default: "0.3"
+      exclude:
+        description: "Optional: comma-separated recipe spell ids you can't get"
+        required: false
+        default: ""
       items:
         description: "Optional: comma-separated item ids to list every live auction for"
         required: false
@@ -61,11 +65,12 @@ jobs:
           ITEMS: ${{ inputs.items }}
           SELL: ${{ inputs.sell }}
           MINCHANCE: ${{ inputs.minchance }}
+          EXCLUDE: ${{ inputs.exclude }}
         run: |
           go build -o fsa .
           ./scripts/limited-stock.sh ./fsa data/limited-stock.json || true
           ./fsa prices -source blizzard -house "$HOUSE"
-          ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -sell "$SELL" -min-chance "$MINCHANCE" -top 15
+          ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -sell "$SELL" -min-chance "$MINCHANCE" -exclude "$EXCLUDE" -top 15
           for id in ${ITEMS//,/ }; do
             echo
             echo "=== Item $id: every listing on house $HOUSE (copper per item, quantity) ==="
