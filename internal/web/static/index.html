@@ -121,7 +121,7 @@ async function staticBoot(){
   const err = fsaLoadRecipes(recText); if (err) throw new Error(err);
   houses = hs.houses || [];
   if (!houses.length) throw new Error('No auction house data published yet');
-  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(KNOWN_HOUSES[h.region+'-'+h.house] || (h.region.toUpperCase()+' · house '+h.house))}</option>`).join('');
+  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(KNOWN_HOUSES[h.region+'-'+h.house] || (h.region.toUpperCase()+' · '+(h.name ? h.name+' #'+h.house : 'house '+h.house)))}</option>`).join('');
   const saved = restore().house; if (saved && houses.some(h => h.file === saved)) $('#house').value = saved;
   $('#houseWrap').hidden = false;
   $('#refresh').textContent = 'Reload prices';

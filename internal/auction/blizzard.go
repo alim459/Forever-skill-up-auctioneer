@@ -91,6 +91,7 @@ func (b *Blizzard) token(ctx context.Context) (string, error) {
 
 // rawAuctions is the response shape of both auction endpoints.
 type rawAuctions struct {
+	Name     string `json:"name"`
 	Auctions []struct {
 		ID   int64 `json:"id"`
 		Item struct {
@@ -205,7 +206,7 @@ func (b *Blizzard) Fetch(ctx context.Context) (*Snapshot, error) {
 		updated = now
 	}
 	return &Snapshot{
-		Source: b.Name(), Region: t.Region, Ruleset: t.Ruleset, House: t.House,
+		Source: b.Name(), Region: t.Region, Ruleset: t.Ruleset, House: t.House, HouseName: house.Name,
 		Updated: updated.UTC(), Fetched: now, Items: aggregate(units),
 	}, nil
 }
@@ -216,4 +217,40 @@ func truncate(b []byte) string {
 		s = s[:300] + "…"
 	}
 	return s
+}
+
+// GetRaw fetches any Game Data API path in the dynamic-forever namespace and
+// returns the body. Used by the "api" diagnostic command.
+func (b *Blizzard) GetRaw(ctx context.Context, path, namespace string) ([]byte, error) {
+	tok, err := b.token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t := b.Target
+	base := b.APIBase
+	if base == "" {
+		base = fmt.Sprintf("https://%s.api.blizzard.com", t.Region)
+	}
+	if namespace == "" {
+		namespace = "dynamic-forever-" + t.Region
+	}
+	u := fmt.Sprintf("%s%s?namespace=%s&locale=en_US", base, path, url.QueryEscape(namespace))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := b.client().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: HTTP %d: %s", path, resp.StatusCode, truncate(body))
+	}
+	return body, nil
 }

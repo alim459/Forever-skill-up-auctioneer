@@ -22,13 +22,14 @@ type Price struct {
 
 // Snapshot is a full price snapshot for one auction house.
 type Snapshot struct {
-	Source  string        `json:"source"`
-	Region  string        `json:"region"`
-	Ruleset int           `json:"ruleset"`
-	House   int           `json:"house"`
-	Updated time.Time     `json:"updated"` // when the data was produced upstream
-	Fetched time.Time     `json:"fetched"` // when we downloaded it
-	Items   map[int]Price `json:"items"`
+	Source    string        `json:"source"`
+	HouseName string        `json:"houseName,omitempty"` // e.g. "Alliance Auction House", when the API gives one
+	Region    string        `json:"region"`
+	Ruleset   int           `json:"ruleset"`
+	House     int           `json:"house"`
+	Updated   time.Time     `json:"updated"` // when the data was produced upstream
+	Fetched   time.Time     `json:"fetched"` // when we downloaded it
+	Items     map[int]Price `json:"items"`
 }
 
 // Lookup returns the price for an item, if listed.

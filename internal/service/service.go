@@ -17,7 +17,7 @@ import (
 // PriceInfo summarises a snapshot.
 func PriceInfo(s *auction.Snapshot) map[string]any {
 	return map[string]any{"source": s.Source, "updated": s.Updated, "fetched": s.Fetched,
-		"items": len(s.Items), "house": s.House, "region": s.Region}
+		"items": len(s.Items), "house": s.House, "region": s.Region, "houseName": s.HouseName}
 }
 
 // Professions lists professions for the UI.

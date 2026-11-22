@@ -31,6 +31,28 @@ WASM_EXEC="$(go env GOROOT)/lib/wasm/wasm_exec.js"
 cp "$WASM_EXEC" "$OUT/"
 GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o "$OUT/app.wasm" ./cmd/wasm
 
+# Ruleset metadata (names, which houses belong to which ruleset). Saved for the
+# site and printed to the log so house ids can be mapped to faction/ruleset.
+if [ -n "${BLIZZARD_CLIENT_ID:-}" ] && [ -n "${BLIZZARD_CLIENT_SECRET:-}" ]; then
+  mkdir -p "$OUT/data/rulesets"
+  if ./bin/fsa api -region "$REGION" /data/wow/ruleset/index > "$OUT/data/rulesets/index.json" 2>&1; then
+    echo "ruleset index: $(head -c 2000 "$OUT/data/rulesets/index.json")"
+  else
+    echo "ruleset index failed: $(tail -n1 "$OUT/data/rulesets/index.json")"
+  fi
+  for rs in $RULESETS; do
+    if ./bin/fsa api -region "$REGION" "/data/wow/ruleset/$rs" > "$OUT/data/rulesets/$rs.json" 2>&1; then
+      echo "ruleset $rs: $(head -c 3000 "$OUT/data/rulesets/$rs.json")"
+    else
+      echo "ruleset $rs failed: $(tail -n1 "$OUT/data/rulesets/$rs.json")"; rm -f "$OUT/data/rulesets/$rs.json"
+    fi
+    if ./bin/fsa api -region "$REGION" "/data/wow/ruleset/$rs/auctions/index" > "$WORK/aidx.json" 2>&1; then
+      echo "ruleset $rs auctions index: $(head -c 3000 "$WORK/aidx.json")"
+      cp "$WORK/aidx.json" "$OUT/data/rulesets/$rs-auctions.json"
+    fi
+  done
+fi
+
 entries=()
 for h in $HOUSES; do
   ok=""
@@ -52,8 +74,9 @@ for h in $HOUSES; do
   if [ -n "$ok" ]; then
     f="prices-$REGION-$h.json"
     cp "$WORK/$f" "$OUT/data/$f"
-    entries+=("{\"region\":\"$REGION\",\"house\":$h,\"ruleset\":$ok,\"file\":\"$f\"}")
-    echo "house $h: ok (ruleset ${ok/#0/unknown, via Forever Goblin})"
+    name="$(jq -r '.houseName // ""' "$WORK/$f")"
+    entries+=("$(jq -cn --arg r "$REGION" --argjson h "$h" --argjson rs "$ok" --arg f "$f" --arg n "$name" '{region:$r,house:$h,ruleset:$rs,file:$f,name:$n}')")
+    echo "house $h: ok (ruleset ${ok/#0/unknown, via Forever Goblin}) name='$name' items=$(jq '.items|length' "$WORK/$f")"
   else
     echo "house $h: no data"
   fi

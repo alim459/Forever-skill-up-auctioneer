@@ -63,6 +63,8 @@ func main() {
 		err = runPrices(ctx, args)
 	case "recipes":
 		err = runRecipes(ctx, args)
+	case "api":
+		err = runAPI(ctx, args)
 	case "professions":
 		err = runProfessions(ctx, args)
 	case "-h", "--help", "help":
@@ -125,6 +127,26 @@ func runPrices(ctx context.Context, args []string) error {
 	fmt.Printf("Fetched %d priced items from %s (house %d, %s, snapshot %s).\n",
 		len(snap.Items), snap.Source, snap.House, strings.ToUpper(snap.Region), snap.Updated.Local().Format(time.RFC822))
 	fmt.Printf("Raw JSON saved under %s/raw/, prices under %s/.\n", a.Cfg.DataDir, a.Cfg.DataDir)
+	return nil
+}
+
+// runAPI prints a raw Game Data API response (diagnostics).
+func runAPI(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("api", flag.ExitOnError)
+	cfg := commonFlags(fs)
+	ns := fs.String("namespace", "", "namespace (default dynamic-forever-<region>)")
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: api [flags] /data/wow/ruleset/index")
+	}
+	c := cfg()
+	b := &auction.Blizzard{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Target: c.Target}
+	body, err := b.GetRaw(ctx, fs.Arg(0), *ns)
+	if err != nil {
+		return err
+	}
+	os.Stdout.Write(body)
+	fmt.Println()
 	return nil
 }
 
