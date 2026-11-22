@@ -25,6 +25,10 @@ on:
         description: "Recipe sources: t trainer, v vendor, d drop, q quest, c other, ? unknown, or all"
         required: true
         default: "tv?"
+      items:
+        description: "Optional: comma-separated item ids to list every live auction for"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -46,7 +50,21 @@ jobs:
           TARGET: ${{ inputs.target }}
           HOUSE: ${{ inputs.house }}
           SOURCES: ${{ inputs.sources }}
+          ITEMS: ${{ inputs.items }}
         run: |
           go build -o fsa .
           ./fsa prices -source blizzard -house "$HOUSE"
           ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -top 15
+          for id in ${ITEMS//,/ }; do
+            echo
+            echo "=== Item $id: every listing on house $HOUSE (copper per item, quantity) ==="
+            jq -rs --argjson id "$id" '
+              [.[] | .auctions[]? | select(.item.id == $id)
+               | {p: (if (.unit_price // 0) > 0 then .unit_price else ((.buyout // 0) / (.quantity // 1)) end),
+                  q: (.quantity // 1), bid: (.bid // 0), left: .time_left}]
+              | sort_by(.p)
+              | (if length == 0 then "no listings" else
+                  "listings: \(length), units: \(map(.q) | add), cheapest: \(.[0].p), most expensive: \(.[-1].p)",
+                  (.[] | "  \(.p | floor)c x\(.q)  bid \(.bid)  \(.left)") end)
+            ' data/raw/auctions-us-$HOUSE.json data/raw/commodities-us-$HOUSE.json 2>/dev/null || echo "no data"
+          done
