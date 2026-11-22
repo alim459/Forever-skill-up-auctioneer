@@ -68,6 +68,12 @@ func Recommend(db *recipes.DB, snap *auction.Snapshot, q url.Values) (map[string
 			opt.Exclude[n] = true
 		}
 	}
+	opt.Known = map[int]bool{}
+	for _, f := range strings.Split(q.Get("known"), ",") {
+		if n, err := strconv.Atoi(strings.TrimSpace(f)); err == nil {
+			opt.Known[n] = true
+		}
+	}
 	adv := advisor.New(db, snap, p, opt)
 	return map[string]any{
 		"profession":     p.Name,

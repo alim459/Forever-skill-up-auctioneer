@@ -125,3 +125,52 @@ func TestPlan(t *testing.T) {
 		t.Fatal("fixture can't reach 200; plan should report where it got stuck")
 	}
 }
+
+func TestLearnCost(t *testing.T) {
+	db, snap := fixture(t)
+	p, _ := db.FindProfession("Tailoring")
+	a := New(db, snap, p, DefaultOptions())
+	rec := a.Recommend(30)
+	var cloak, vest Option
+	for _, o := range rec.SkillUps {
+		switch o.Name {
+		case "Linen Cloak":
+			cloak = o
+		case "Brown Linen Vest":
+			vest = o
+		}
+	}
+	if cloak.LearnHow != "vendor" || cloak.LearnCost != 500 || cloak.TeachName != "Pattern: Linen Cloak" {
+		t.Fatalf("cloak learn = %+v", cloak)
+	}
+	if vest.LearnHow != "trainer" || vest.LearnPriced {
+		t.Fatalf("vest learn = %s %v", vest.LearnHow, vest.LearnPriced)
+	}
+	// Cheaper on the AH than at the vendor.
+	snap.Items[9100] = auction.Price{Market: 300, Quantity: 1}
+	if o := a.Evaluate(cloak.Recipe, 30); o.LearnHow != "ah" || o.LearnCost != 300 {
+		t.Fatalf("ah pattern = %s %v", o.LearnHow, o.LearnCost)
+	}
+	pl := a.Plan(1, 60)
+	if pl.RecipeCost != 300 {
+		t.Fatalf("recipe cost = %v", pl.RecipeCost)
+	}
+	if math.Abs(pl.Net-(pl.Sale-pl.Cost-pl.RecipeCost)) > 1e-6 {
+		t.Fatal("net excludes recipe cost")
+	}
+	n := 0
+	for _, r := range pl.Recipes {
+		if r.Name == "Linen Cloak" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("cloak listed %d times in plan recipes", n)
+	}
+	// Already known: free.
+	opt := DefaultOptions()
+	opt.Known = map[int]bool{2: true}
+	if o := New(db, snap, p, opt).Evaluate(cloak.Recipe, 30); o.LearnHow != "known" || o.LearnCost != 0 {
+		t.Fatalf("known = %+v", o.LearnHow)
+	}
+}

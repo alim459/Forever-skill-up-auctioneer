@@ -289,6 +289,7 @@ func runRecommend(ctx context.Context, args []string) error {
 	top := fs.Int("top", 10, "rows per table")
 	sources := fs.String("sources", "tv?", "recipe sources you can use: t trainer, v vendor, d drop, q quest, c other, ? unknown; 'all' for everything")
 	exclude := fs.String("exclude", "", "comma-separated recipe spell ids you don't have")
+	known := fs.String("known", "", "comma-separated recipe spell ids you already know (no pattern cost)")
 	cooldowns := fs.Bool("cooldowns", false, "include cooldown crafts (transmutes) in skill-up ranking")
 	noCraft := fs.Bool("no-craft-reagents", false, "don't price reagents at the cost of crafting them yourself")
 	asJSON := fs.Bool("json", false, "print JSON instead of tables")
@@ -320,6 +321,7 @@ func runRecommend(ctx context.Context, args []string) error {
 	opt.IncludeCooldowns = *cooldowns
 	opt.CraftReagents = !*noCraft
 	opt.Exclude = parseIDs(*exclude)
+	opt.Known = parseIDs(*known)
 
 	adv := advisor.New(db, snap, p, opt)
 	rec := adv.Recommend(*skill)
@@ -337,13 +339,13 @@ func runRecommend(ctx context.Context, args []string) error {
 
 	fmt.Println("BEST SKILL-UPS RIGHT NOW (cheapest per skill point; negative cost = you profit)")
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "Recipe\tColour\tChance\tMats/craft\tSells for\tProfit/craft\tCost/point\tListed\tSource")
+	fmt.Fprintln(tw, "Recipe\tColour\tChance\tMats/craft\tSells for\tProfit/craft\tCost/point\tListed\tPattern")
 	for i, o := range rec.SkillUps {
 		if i >= *top {
 			break
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%.0f%%\t%s\t%s\t%s\t%s\t%s\t%s\n", o.Name, o.Colour, o.Chance*100,
-			money.Format(o.Cost), saleStr(o), money.Format(o.Profit), money.Format(o.CostPerPoint), listed(o), o.Sources)
+			money.Format(o.Cost), saleStr(o), money.Format(o.Profit), money.Format(o.CostPerPoint), listed(o), learnStr(o))
 	}
 	tw.Flush()
 	if len(rec.SkillUps) == 0 {
@@ -371,9 +373,13 @@ func runRecommend(ctx context.Context, args []string) error {
 
 	fmt.Printf("\nLEVELING PLAN %d → %d\n", plan.From, plan.To)
 	tw = tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "Skill\tCraft\t×\tMats\tSell back\tNet")
+	fmt.Fprintln(tw, "Skill\tCraft\t×\tPattern\tMats\tSell back\tNet")
 	for _, s := range plan.Steps {
-		fmt.Fprintf(tw, "%d–%d\t%s\t%d\t%s\t%s\t%s\n", s.From, s.To, s.Option.Name, s.Crafts,
+		pat := ""
+		if s.LearnCost > 0 {
+			pat = money.Format(s.LearnCost)
+		}
+		fmt.Fprintf(tw, "%d–%d\t%s\t%d\t%s\t%s\t%s\t%s\n", s.From, s.To, s.Option.Name, s.Crafts, pat,
 			money.Format(s.Cost), money.Format(s.Sale), money.Format(s.Net))
 		if s.TrainNote != "" {
 			fmt.Fprintf(tw, "\t  ↳ %s\t\t\t\t\n", s.TrainNote)
@@ -386,7 +392,18 @@ func runRecommend(ctx context.Context, args []string) error {
 	if plan.StuckAt > 0 {
 		fmt.Printf("  Stopped at %d: no priced recipe gives a skill-up there with your sources (try -sources all).\n", plan.StuckAt)
 	}
-	fmt.Printf("Total: materials %s, sell-back %s, net %s\n", money.Format(plan.Cost), money.Format(plan.Sale), money.Format(plan.Net))
+	fmt.Printf("Total: patterns %s, materials %s, sell-back %s, net %s\n", money.Format(plan.RecipeCost),
+		money.Format(plan.Cost), money.Format(plan.Sale), money.Format(plan.Net))
+
+	if len(plan.Recipes) > 0 {
+		fmt.Println("\nRECIPES THIS PLAN USES (pass -known with ids you already have)")
+		tw = tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+		for _, o := range plan.Recipes {
+			where := strings.Join(o.SourceNames, ", ")
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", o.SpellID, o.Name, learnStr(o), where)
+		}
+		tw.Flush()
+	}
 
 	if len(plan.Shopping) > 0 {
 		fmt.Println("\nSHOPPING LIST")
@@ -410,6 +427,18 @@ func saleStr(o advisor.Option) string {
 		return money.Format(o.Sale) + " (vendor)"
 	}
 	return "—"
+}
+
+func learnStr(o advisor.Option) string {
+	switch o.LearnHow {
+	case "known":
+		return "known"
+	case "vendor", "ah":
+		return money.Format(o.LearnCost) + " (" + o.LearnHow + ")"
+	case "trainer":
+		return "trainer (fee not in data)"
+	}
+	return "unknown source"
 }
 
 func listed(o advisor.Option) string {
