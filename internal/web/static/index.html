@@ -24,7 +24,9 @@ button.secondary{background:transparent;color:var(--text);border:1px solid var(-
 button:disabled{opacity:.6;cursor:wait}
 .checks{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
 .checks label{flex-direction:row;align-items:center;color:var(--text)}
-.status{font-size:12px;color:var(--muted)}
+.status{font-size:12px;color:var(--muted);min-width:0;overflow-wrap:anywhere}
+header .status{flex:1 1 280px}
+main{overflow-x:hidden}
 .scroll{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
@@ -140,7 +142,7 @@ async function staticBoot(){
   houses = (hs.houses || []).map(h => ({...h, ...houseInfo(h)}))
     .sort((a, b) => a.order - b.order || (FACTION_ORDER[a.faction] ?? 9) - (FACTION_ORDER[b.faction] ?? 9));
   if (!houses.length) throw new Error('No auction house data published yet');
-  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(h.faction)} · ${esc(h.ruleset)} (${esc(h.region.toUpperCase())})</option>`).join('');
+  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(h.region.toUpperCase())} · ${esc(h.faction)} · ${esc(h.ruleset)}</option>`).join('');
   const def = houses.find(h => h.house === DEFAULT_HOUSE);
   if (def) $('#house').value = def.file;
   const saved = restore().house; if (saved && houses.some(h => h.file === saved)) $('#house').value = saved;
