@@ -75,6 +75,12 @@ for h in $HOUSES; do
   if [ -n "$ok" ]; then
     f="prices-$REGION-$h.json"
     cp "$WORK/$f" "$OUT/data/$f"
+    hist="${HISTORY_DIR:-.cache/history}/history-$REGION-$h.json"
+    if ./bin/fsa history -data "$WORK" -region "$REGION" -house "$h" -out "$hist" >/dev/null; then
+      cp "$hist" "$OUT/data/history-$REGION-$h.json"
+    else
+      echo "  house $h: history update failed"
+    fi
     name="$(jq -r '.houseName // ""' "$WORK/$f")"
     entries+=("$(jq -cn --arg r "$REGION" --argjson h "$h" --argjson rs "$ok" --arg f "$f" --arg n "$name" '{region:$r,house:$h,ruleset:$rs,file:$f,name:$n}')")
     echo "house $h: ok (ruleset ${ok/#0/unknown, via Forever Goblin}) name='$name' items=$(jq '.items|length' "$WORK/$f")"

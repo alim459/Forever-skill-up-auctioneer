@@ -65,6 +65,8 @@ func main() {
 		err = runPrices(ctx, args)
 	case "recipes":
 		err = runRecipes(ctx, args)
+	case "history":
+		err = runHistory(ctx, args)
 	case "items":
 		err = runItems(ctx, args)
 	case "api":
@@ -134,6 +136,54 @@ func runPrices(ctx context.Context, args []string) error {
 	return nil
 }
 
+// runHistory appends the saved price snapshot for a house to its history file.
+func runHistory(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("history", flag.ExitOnError)
+	cfg := commonFlags(fs)
+	out := fs.String("out", "", "history file (default <data>/history-<region>-<house>.json)")
+	fs.Parse(args)
+	c := cfg()
+	if *out == "" {
+		*out = filepath.Join(c.DataDir, fmt.Sprintf("history-%s-%d.json", c.Target.Region, c.Target.House))
+	}
+	a := app.New(c)
+	snap, err := auction.Load(filepath.Join(c.DataDir, auction.FileName(c.Target.Region, c.Target.House)))
+	if err != nil {
+		return fmt.Errorf("no saved prices for house %d (run prices first): %w", c.Target.House, err)
+	}
+	db, err := a.Recipes(ctx)
+	if err != nil {
+		return err
+	}
+	h, err := auction.LoadHistory(*out)
+	if err != nil {
+		return err
+	}
+	added := h.Add(snap, trackedItems(db), time.Now())
+	if err := h.Save(*out); err != nil {
+		return err
+	}
+	fmt.Printf("History house %d: %d snapshots (new: %v), %d items.\n", c.Target.House, len(h.Times), added, len(h.Items))
+	return nil
+}
+
+// trackedItems is every crafted item and reagent in the recipe data.
+func trackedItems(db *recipes.DB) []int {
+	seen := map[int]bool{}
+	var ids []int
+	for _, p := range db.Professions {
+		for _, r := range p.Recipes {
+			for _, id := range append([]int{r.CraftedItem}, reagentIDs(r)...) {
+				if id > 0 && !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+		}
+	}
+	return ids
+}
+
 // runItems caches Blizzard item tooltips (stats) for every crafted item and
 // reagent in the recipe data.
 func runItems(ctx context.Context, args []string) error {
@@ -151,18 +201,7 @@ func runItems(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	seen := map[int]bool{}
-	var ids []int
-	for _, p := range db.Professions {
-		for _, r := range p.Recipes {
-			for _, id := range append([]int{r.CraftedItem}, reagentIDs(r)...) {
-				if id > 0 && !seen[id] {
-					seen[id] = true
-					ids = append(ids, id)
-				}
-			}
-		}
-	}
+	ids := trackedItems(db)
 	cache, err := auction.LoadItemCache(*out)
 	if err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alim459/forever-skill-up-auctioneer/internal/app"
@@ -29,9 +30,14 @@ func Static() fs.FS {
 func Handler(a *app.App) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(Static()))
-	// Item tooltips, if cached with the "items" command.
-	mux.HandleFunc("GET /data/items.json", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(a.Cfg.DataDir, "items.json"))
+	// Item tooltips and price history, if cached by the "items"/"history" commands.
+	mux.HandleFunc("GET /data/{file}", func(w http.ResponseWriter, r *http.Request) {
+		f := r.PathValue("file")
+		if f != "items.json" && !(strings.HasPrefix(f, "history-") && strings.HasSuffix(f, ".json")) || strings.ContainsAny(f, "/\\") {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(a.Cfg.DataDir, f))
 	})
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {

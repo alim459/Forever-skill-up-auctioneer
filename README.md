@@ -42,6 +42,8 @@ The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the 
 
 - Item stats: the workflow caches Blizzard's item tooltips (`/data/wow/item/{id}`, namespace `static-forever-{region}`) for every craftable item and reagent. Hover a recipe name to see the item's stats, or tap a row on a phone. Run `items` locally to get the same in `serve` mode.
 
+- Price history: every hourly run appends the snapshot's market price for each craftable item and reagent to `history-<region>-<house>.json` (kept in the Actions cache: hourly for 7 days, then daily, up to 120 days). Open a row to see the item's price chart. Locally, run `history` after `prices` to build the same file.
+
 One-time setup:
 
 1. **Settings → Pages → Build and deployment → Source: "GitHub Actions".**
