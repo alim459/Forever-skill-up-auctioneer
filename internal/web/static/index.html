@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forever Skill-Up Auctioneer</title>
+<style>
+:root{--bg:#14110d;--panel:#1e1a14;--line:#3a3226;--text:#eadfc8;--muted:#a3957c;--gold:#e3b341;--accent:#c9902c;
+--orange:#ff8040;--yellow:#ffd23f;--green:#40bf40;--grey:#8a8a8a;--bad:#e06060;--good:#6fd06f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{margin:0;font-size:20px;color:var(--gold);letter-spacing:.3px}
+h2{font-size:15px;margin:0 0 8px;color:var(--gold)}
+main{max-width:1200px;margin:0 auto;padding:16px 20px 40px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+form{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input,select,button{font:inherit;color:var(--text);background:#0f0c09;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+input[type=number]{width:90px}
+button{background:var(--accent);color:#1a1208;border:0;font-weight:600;cursor:pointer}
+button.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}
+button:disabled{opacity:.6;cursor:wait}
+.checks{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
+.checks label{flex-direction:row;align-items:center;color:var(--text)}
+.status{font-size:12px;color:var(--muted)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.num,th.num{text-align:right}
+tr.click{cursor:pointer}tr.click:hover{background:#2a241b}
+tr.detail td{background:#17130e;white-space:normal;color:var(--muted);font-size:13px}
+.c-orange{color:var(--orange)}.c-yellow{color:var(--yellow)}.c-green{color:var(--green)}.c-grey{color:var(--grey)}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.totals{display:flex;gap:24px;flex-wrap:wrap;margin:10px 0 0;font-size:13px}
+.warn{color:var(--yellow);font-size:12px}
+.note{color:var(--muted);font-size:12px;margin-top:8px}
+.err{color:var(--bad)}
+.grid{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:1000px){.grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚒ Forever Skill-Up Auctioneer</h1>
+  <div class="status" id="status">Loading…</div>
+</header>
+<main>
+  <div class="panel">
+    <form id="f">
+      <label>Profession <select id="prof"></select></label>
+      <label>Current skill <input id="skill" type="number" min="1" max="300" value="1"></label>
+      <label>Target skill <input id="target" type="number" min="1" max="300" value="75"></label>
+      <div class="checks">
+        <span class="status">Recipes from:</span>
+        <label><input type="checkbox" data-src="t" checked> trainer</label>
+        <label><input type="checkbox" data-src="v" checked> vendor</label>
+        <label><input type="checkbox" data-src="d"> drop</label>
+        <label><input type="checkbox" data-src="q"> quest</label>
+        <label><input type="checkbox" data-src="ca"> other</label>
+        <label><input type="checkbox" data-src="?" checked> unknown</label>
+        <label><input type="checkbox" id="cooldowns"> cooldown crafts</label>
+      </div>
+      <button type="submit">Recommend</button>
+      <button type="button" class="secondary" id="refresh">Refresh AH prices</button>
+    </form>
+  </div>
+
+  <div id="out"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function gold(c){
+  const neg = c < 0; c = Math.round(Math.abs(c));
+  const g = Math.floor(c/10000), s = Math.floor(c/100)%100, k = c%100;
+  let out = (g? g+'g ':'') + ((g||s)? s+'s ':'') + k+'c';
+  return (neg && c ? '-' : '') + out;
+}
+const signed = c => `<span class="${c>=0?'pos':'neg'}">${gold(c)}</span>`;
+const pct = x => Math.round(x*100)+'%';
+const ago = t => { const m = Math.round((Date.now()-new Date(t))/60000); return m<60? m+' min ago' : Math.round(m/60)+' h ago'; };
+
+function save(){ try{ localStorage.setItem('fsa', JSON.stringify({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value})); }catch(e){} }
+function restore(){ try{ return JSON.parse(localStorage.getItem('fsa')||'{}'); }catch(e){ return {}; } }
+
+async function api(url, opt){
+  const r = await fetch(url, opt); const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
+
+function showStatus(p){
+  $('#status').innerHTML = p ? `AH: ${esc(p.source)} · ${p.items.toLocaleString()} items · snapshot ${ago(p.updated)}` : '<span class="err">No AH data</span>';
+}
+
+async function init(){
+  try{
+    const s = await api('/api/status');
+    const saved = restore();
+    $('#prof').innerHTML = s.professions.map(p => `<option value="${p.id}">${esc(p.name)} (${p.recipes})</option>`).join('');
+    if (saved.prof) $('#prof').value = saved.prof;
+    if (saved.skill) $('#skill').value = saved.skill;
+    if (saved.target) $('#target').value = saved.target;
+    if (s.prices) showStatus(s.prices); else $('#status').innerHTML = `<span class="err">${esc(s.pricesError||'No AH data')}</span>`;
+  }catch(e){ $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+
+function reagentText(o){
+  return o.reagents.map(g => `${g.count}× ${esc(g.name)} @ ${g.priced? gold(g.unit)+' ('+g.source+')' : '<span class="err">no price</span>'}`).join(' · ');
+}
+
+function optionRows(list, cols, id){
+  if (!list.length) return `<tr><td colspan="${cols.length}" class="note">Nothing here with these settings.</td></tr>`;
+  return list.slice(0, 25).map((o,i) => `
+    <tr class="click" data-t="${id}-${i}">${cols.map(c => c.f(o)).join('')}</tr>
+    <tr class="detail" id="${id}-${i}" hidden><td colspan="${cols.length}">
+      <b>Reagents:</b> ${reagentText(o) || 'none'}<br>
+      Learn at ${o.required} · source: ${esc(o.sources)}${o.ahUnit? ' · AH price '+gold(o.ahUnit)+' each, '+o.listed+' listed' : ''}${o.soldPerDay!=null? ' · ~'+o.soldPerDay.toFixed(1)+' sold/day':''}
+    </td></tr>`).join('');
+}
+
+const td = (v, cls='') => `<td class="${cls}">${v}</td>`;
+const colCol = o => td(`${o.colour}`, 'c-'+o.colour);
+const saleCell = o => td(o.saleHow==='none' ? '—' : gold(o.sale) + (o.saleHow==='vendor'?' <span class="status">vendor</span>':''), 'num');
+
+function render(d){
+  const rec = d.recommendation, plan = d.plan;
+  for (const k of ['skillUps','profit','unpriced']) rec[k] = rec[k] || [];
+  plan.steps = plan.steps || []; plan.shopping = plan.shopping || [];
+  for (const o of [...rec.skillUps, ...rec.profit, ...rec.unpriced, ...plan.steps.map(s=>s.option)]) o.reagents = o.reagents || [];
+  const skillCols = [
+    {h:'Recipe', f:o=>td(esc(o.name))}, {h:'Colour', f:colCol},
+    {h:'Chance', f:o=>td(pct(o.chance),'num')}, {h:'Mats', f:o=>td(gold(o.cost),'num')},
+    {h:'Sells for', f:saleCell}, {h:'Profit', f:o=>td(signed(o.profit),'num')},
+    {h:'Net / point', f:o=>td(signed(-o.costPerPoint),'num')}];
+  const profitCols = [
+    {h:'Recipe', f:o=>td(esc(o.name))}, {h:'Colour', f:colCol},
+    {h:'Mats', f:o=>td(gold(o.cost),'num')}, {h:'Sells for', f:saleCell},
+    {h:'Profit', f:o=>td(signed(o.profit),'num')}, {h:'Listed', f:o=>td(o.listed,'num')}];
+  const head = cols => '<tr>'+cols.map(c=>`<th class="${c.h==='Recipe'||c.h==='Colour'?'':'num'}">${c.h}</th>`).join('')+'</tr>';
+
+  let planRows = plan.steps.map(s => `
+    <tr><td>${s.from}–${s.to}</td><td>${esc(s.option.name)}</td><td class="c-${s.option.colour}">${s.option.colour}</td>
+    <td class="num">${s.crafts}</td><td class="num">${gold(s.cost)}</td><td class="num">${gold(s.sale)}</td><td class="num">${signed(s.net)}</td></tr>
+    ${s.trainNote||s.warnings? `<tr class="detail"><td></td><td colspan="6">${s.trainNote? '↳ '+esc(s.trainNote)+' ':''}${(s.warnings||[]).map(w=>`<span class="warn">⚠ ${esc(w)}</span>`).join(' ')}</td></tr>`:''}`).join('');
+  if (!plan.steps.length) planRows = `<tr><td colspan="7" class="note">No plan possible.</td></tr>`;
+
+  $('#out').innerHTML = `
+  <div class="grid">
+    <div class="panel"><h2>Best skill-ups at ${rec.skill}</h2>
+      <div class="scroll"><table>${head(skillCols)}${optionRows(rec.skillUps, skillCols, 's')}</table></div>
+      <div class="note">Ranked by net gold per skill point (green = you make money while leveling; lower-chance crafts are used only when nothing better is available). Click a row for reagents.</div>
+    </div>
+    <div class="panel"><h2>Most profitable crafts at ${rec.skill}</h2>
+      <div class="scroll"><table>${head(profitCols)}${optionRows(rec.profit, profitCols, 'p')}</table></div>
+      <div class="note">Any colour, sold on the AH after its 5% cut. Check “Listed” before crafting a stack.</div>
+    </div>
+  </div>
+  <div class="panel"><h2>Leveling plan ${plan.from} → ${plan.to}</h2>
+    <div class="scroll"><table><tr><th>Skill</th><th>Craft</th><th>Colour</th><th class="num">Crafts</th><th class="num">Mats</th><th class="num">Sell back</th><th class="num">Net</th></tr>${planRows}</table></div>
+    ${plan.stuckAt? `<div class="warn">Stopped at ${plan.stuckAt}: no priced recipe gives a skill-up there. Try allowing more recipe sources.</div>`:''}
+    <div class="totals"><span>Materials: <b>${gold(plan.cost)}</b></span><span>Sell back: <b>${gold(plan.sale)}</b></span><span>Net: <b>${signed(plan.net)}</b></span></div>
+    ${plan.shopping && plan.shopping.length ? `<h2 style="margin-top:16px">Shopping list</h2><div class="scroll"><table>
+      <tr><th class="num">Qty</th><th>Item</th><th class="num">Each</th><th>From</th><th class="num">Total</th></tr>
+      ${plan.shopping.map(l=>`<tr><td class="num">${l.count}</td><td>${esc(l.name)}</td><td class="num">${gold(l.unit)}</td><td>${l.source}</td><td class="num">${gold(l.total)}</td></tr>`).join('')}
+    </table></div>`:''}
+    <div class="note">Crafts are expected counts: orange always skills up, then the chance falls through yellow and green, (grey − skill) / (grey − yellow). Reagents count at the cheapest of AH market price, vendor price, or crafting them yourself. AH deposits aren't included.</div>
+  </div>
+  ${rec.unpriced && rec.unpriced.length ? `<div class="note">${rec.unpriced.length} skill-up recipes skipped (a reagent has no AH or vendor price): ${rec.unpriced.slice(0,12).map(o=>esc(o.name)).join(', ')}${rec.unpriced.length>12?'…':''}</div>`:''}`;
+
+  document.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { const d = document.getElementById(tr.dataset.t); d.hidden = !d.hidden; });
+}
+
+async function recommend(e){
+  e && e.preventDefault(); save();
+  const btn = $('#f button[type=submit]'); btn.disabled = true;
+  const src = [...document.querySelectorAll('[data-src]')].filter(c=>c.checked).map(c=>c.dataset.src).join('');
+  const qs = new URLSearchParams({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value, sources: src || '-', cooldowns: $('#cooldowns').checked?'1':'0'});
+  $('#out').innerHTML = '<div class="panel note">Crunching recipes…</div>';
+  try{ const d = await api('/api/recommend?'+qs); showStatus(d.prices); render(d); }
+  catch(err){ $('#out').innerHTML = `<div class="panel err">${esc(err.message)}</div>`; }
+  finally{ btn.disabled = false; }
+}
+
+$('#f').addEventListener('submit', recommend);
+$('#skill').addEventListener('change', () => { const s=+$('#skill').value; if (+$('#target').value <= s) $('#target').value = Math.min(300, s+25); });
+$('#refresh').addEventListener('click', async () => {
+  const b = $('#refresh'); b.disabled = true; b.textContent = 'Fetching…';
+  try{ showStatus(await api('/api/refresh', {method:'POST'})); if ($('#out').innerHTML) recommend(); }
+  catch(e){ $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally{ b.disabled = false; b.textContent = 'Refresh AH prices'; }
+});
+init();
+</script>
+</body>
+</html>
