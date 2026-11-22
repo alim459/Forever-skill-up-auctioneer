@@ -1,0 +1,52 @@
+name: Recommend (on demand)
+
+# Runs a recommendation against the live auction house and prints it in the
+# job log. Actions tab -> "Recommend (on demand)" -> Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      prof:
+        description: Profession (e.g. leatherworking)
+        required: true
+        default: leatherworking
+      skill:
+        description: Current skill
+        required: true
+        default: "1"
+      target:
+        description: Target skill
+        required: true
+        default: "75"
+      house:
+        description: "Auction house id (110 = US Alliance PvP, 111 = US Alliance Normal, 114 = US Horde Normal)"
+        required: true
+        default: "110"
+      sources:
+        description: "Recipe sources: t trainer, v vendor, d drop, q quest, c other, ? unknown, or all"
+        required: true
+        default: "tv?"
+
+permissions:
+  contents: read
+
+jobs:
+  recommend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Recommend
+        env:
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+          PROF: ${{ inputs.prof }}
+          SKILL: ${{ inputs.skill }}
+          TARGET: ${{ inputs.target }}
+          HOUSE: ${{ inputs.house }}
+          SOURCES: ${{ inputs.sources }}
+        run: |
+          go build -o fsa .
+          ./fsa prices -source blizzard -house "$HOUSE"
+          ./fsa recommend -house "$HOUSE" -prof "$PROF" -skill "$SKILL" -target "$TARGET" -sources "$SOURCES" -top 15
