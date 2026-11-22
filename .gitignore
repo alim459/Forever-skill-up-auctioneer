@@ -3,3 +3,5 @@
 /forever-auctioneer.exe
 /dist/
 .env
+/site/
+/bin/

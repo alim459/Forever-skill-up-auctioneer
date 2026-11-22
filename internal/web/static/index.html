@@ -8,6 +8,7 @@
 :root{--bg:#14110d;--panel:#1e1a14;--line:#3a3226;--text:#eadfc8;--muted:#a3957c;--gold:#e3b341;--accent:#c9902c;
 --orange:#ff8040;--yellow:#ffd23f;--green:#40bf40;--grey:#8a8a8a;--bad:#e06060;--good:#6fd06f}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
 header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
 h1{margin:0;font-size:20px;color:var(--gold);letter-spacing:.3px}
@@ -49,6 +50,7 @@ tr.detail td{background:#17130e;white-space:normal;color:var(--muted);font-size:
 <main>
   <div class="panel">
     <form id="f">
+      <label id="houseWrap" hidden>Auction house <select id="house"></select></label>
       <label>Profession <select id="prof"></select></label>
       <label>Current skill <input id="skill" type="number" min="1" max="300" value="1"></label>
       <label>Target skill <input id="target" type="number" min="1" max="300" value="75"></label>
@@ -69,6 +71,7 @@ tr.detail td{background:#17130e;white-space:normal;color:var(--muted);font-size:
 
   <div id="out"></div>
 </main>
+<script src="config.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -82,10 +85,61 @@ const signed = c => `<span class="${c>=0?'pos':'neg'}">${gold(c)}</span>`;
 const pct = x => Math.round(x*100)+'%';
 const ago = t => { const m = Math.round((Date.now()-new Date(t))/60000); return m<60? m+' min ago' : Math.round(m/60)+' h ago'; };
 
-function save(){ try{ localStorage.setItem('fsa', JSON.stringify({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value})); }catch(e){} }
+function save(){ try{ localStorage.setItem('fsa', JSON.stringify({prof:$('#prof').value, skill:$('#skill').value, target:$('#target').value, house:$('#house').value})); }catch(e){} }
 function restore(){ try{ return JSON.parse(localStorage.getItem('fsa')||'{}'); }catch(e){ return {}; } }
 
+// --- Hosted (static) mode: the Go advisor runs in the browser as WebAssembly,
+// prices come from JSON files refreshed hourly by GitHub Actions.
+const STATIC = !!window.FSA_STATIC;
+const RECIPES_URL = window.FSA_RECIPES_URL || 'https://raw.githubusercontent.com/OrbitalBoom/Forever-Tracker/main/js/professions-data.js';
+const KNOWN_HOUSES = {'us-114': 'US · Normal · Horde'};
+let staticReady = null, houses = [];
+
+function loadScript(src){
+  return new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok;
+    s.onerror = () => bad(new Error('Failed to load ' + src)); document.head.appendChild(s); });
+}
+async function fetchOK(url, opt){ const r = await fetch(url, opt); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r; }
+
+async function loadHouse(){
+  const h = houses.find(h => h.file === $('#house').value) || houses[0];
+  const text = await (await fetchOK('data/' + h.file, {cache: 'no-cache'})).text();
+  const err = fsaLoadPrices(text); if (err) throw new Error(err);
+}
+
+async function staticBoot(){
+  $('#status').textContent = 'Loading recipe data and prices…';
+  await loadScript('wasm_exec.js');
+  const go = new Go();
+  const ready = new Promise(r => addEventListener('fsa-ready', r, {once: true}));
+  const bytes = await (await fetchOK('app.wasm')).arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
+  go.run(instance); await ready;
+  const [recText, hs] = await Promise.all([
+    fetchOK(RECIPES_URL).then(r => r.text()),
+    fetchOK('data/houses.json', {cache: 'no-cache'}).then(r => r.json())]);
+  const err = fsaLoadRecipes(recText); if (err) throw new Error(err);
+  houses = hs.houses || [];
+  if (!houses.length) throw new Error('No auction house data published yet');
+  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(KNOWN_HOUSES[h.region+'-'+h.house] || (h.region.toUpperCase()+' · house '+h.house))}</option>`).join('');
+  const saved = restore().house; if (saved && houses.some(h => h.file === saved)) $('#house').value = saved;
+  $('#houseWrap').hidden = false;
+  $('#refresh').textContent = 'Reload prices';
+  $('#refresh').title = 'Prices are refreshed hourly on the server; this reloads the latest snapshot.';
+  await loadHouse();
+}
+
 async function api(url, opt){
+  if (STATIC){
+    await staticReady;
+    let j;
+    if (url.startsWith('/api/status')) j = JSON.parse(fsaStatus());
+    else if (url.startsWith('/api/recommend')) j = JSON.parse(fsaRecommend(url.split('?')[1] || ''));
+    else if (url.startsWith('/api/refresh')) { await loadHouse(); j = JSON.parse(fsaStatus()).prices; }
+    if (!j) throw new Error('unknown request ' + url);
+    if (j.error) throw new Error(j.error);
+    return j;
+  }
   const r = await fetch(url, opt); const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
@@ -96,6 +150,7 @@ function showStatus(p){
 
 async function init(){
   try{
+    if (STATIC) { staticReady = staticBoot(); await staticReady; }
     const s = await api('/api/status');
     const saved = restore();
     $('#prof').innerHTML = s.professions.map(p => `<option value="${p.id}">${esc(p.name)} (${p.recipes})</option>`).join('');
@@ -189,7 +244,12 @@ $('#refresh').addEventListener('click', async () => {
   const b = $('#refresh'); b.disabled = true; b.textContent = 'Fetching…';
   try{ showStatus(await api('/api/refresh', {method:'POST'})); if ($('#out').innerHTML) recommend(); }
   catch(e){ $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-  finally{ b.disabled = false; b.textContent = 'Refresh AH prices'; }
+  finally{ b.disabled = false; b.textContent = STATIC ? 'Reload prices' : 'Refresh AH prices'; }
+});
+$('#house').addEventListener('change', async () => {
+  save();
+  try{ await loadHouse(); showStatus(JSON.parse(fsaStatus()).prices); if ($('#out').innerHTML) recommend(); }
+  catch(e){ $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 });
 init();
 </script>

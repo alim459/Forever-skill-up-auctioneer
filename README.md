@@ -32,6 +32,25 @@ Or from the terminal:
 
 On Windows, build with `go build -o forever-auctioneer.exe .` and set the variables with `set BLIZZARD_CLIENT_ID=...`.
 
+## Hosted version (GitHub Pages)
+
+The repo includes a workflow (`.github/workflows/pages.yml`) that publishes the app as a free website:
+
+- Every hour it fetches a fresh snapshot for every Forever auction house it can find and publishes them as JSON.
+- The advisor is compiled to WebAssembly and runs in your browser, so no server is needed.
+- The page has an "Auction house" picker. House 114 is labelled (US Normal Horde); the others show as "house N" until we know which is which.
+
+One-time setup:
+
+1. **Settings → Pages → Build and deployment → Source: "GitHub Actions".**
+2. *(Recommended)* **Settings → Secrets and variables → Actions → New repository secret**: add `BLIZZARD_CLIENT_ID` and `BLIZZARD_CLIENT_SECRET` (free at https://develop.battle.net/access/clients). Without them the site uses Forever Goblin.
+3. **Actions → "Update AH prices and publish site" → Run workflow** (after that it runs hourly by itself).
+4. Open `https://<your-user>.github.io/<repo-name>/`; the deploy job also shows the link.
+
+Optional repository *variables* (same settings page, "Variables" tab): `FOREVER_REGION` (default `us`) and `FOREVER_HOUSES` (space-separated house ids to fetch).
+
+The hourly schedule runs from the repository's default branch.
+
 ## Where the data comes from
 
 | Data | Source |
@@ -97,4 +116,7 @@ Layout:
 - `internal/auction`: Blizzard and Forever Goblin clients, price aggregation, snapshots
 - `internal/recipes`: recipe dataset loader and skill-up maths
 - `internal/advisor`: costing, ranking and the leveling planner
+- `internal/service`: shared JSON answers for the server and the browser build
 - `internal/web`: local web UI and JSON API (`/api/status`, `/api/recommend`, `POST /api/refresh`)
+- `cmd/wasm`: WebAssembly entry point for the hosted site
+- `scripts/build-site.sh`: builds the static site (used by the workflow)
