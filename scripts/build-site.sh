@@ -40,14 +40,15 @@ if [ -n "${BLIZZARD_CLIENT_ID:-}" ] && [ -n "${BLIZZARD_CLIENT_SECRET:-}" ]; the
   else
     echo "ruleset index failed: $(tail -n1 "$OUT/data/rulesets/index.json")"
   fi
-  for rs in $RULESETS; do
+  ids="$(jq -r '.rulesets[]?.id' "$OUT/data/rulesets/index.json" 2>/dev/null | sort -n | tr '\n' ' ')"
+  for rs in ${ids:-$RULESETS}; do
     if ./bin/fsa api -region "$REGION" "/data/wow/ruleset/$rs" > "$OUT/data/rulesets/$rs.json" 2>&1; then
-      echo "ruleset $rs: $(head -c 3000 "$OUT/data/rulesets/$rs.json")"
+      echo "ruleset $rs: $(jq -c '{id,name,status:.status.name}' "$OUT/data/rulesets/$rs.json")"
     else
       echo "ruleset $rs failed: $(tail -n1 "$OUT/data/rulesets/$rs.json")"; rm -f "$OUT/data/rulesets/$rs.json"
     fi
     if ./bin/fsa api -region "$REGION" "/data/wow/ruleset/$rs/auctions/index" > "$WORK/aidx.json" 2>&1; then
-      echo "ruleset $rs auctions index: $(head -c 3000 "$WORK/aidx.json")"
+      echo "ruleset $rs auctions: $(jq -c '[.auctions[] | "\(.id) \(.name)"]' "$WORK/aidx.json")"
       cp "$WORK/aidx.json" "$OUT/data/rulesets/$rs-auctions.json"
     fi
   done

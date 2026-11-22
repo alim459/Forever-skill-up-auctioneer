@@ -92,7 +92,24 @@ function restore(){ try{ return JSON.parse(localStorage.getItem('fsa')||'{}'); }
 // prices come from JSON files refreshed hourly by GitHub Actions.
 const STATIC = !!window.FSA_STATIC;
 const RECIPES_URL = window.FSA_RECIPES_URL || 'https://raw.githubusercontent.com/OrbitalBoom/Forever-Tracker/main/js/professions-data.js';
-const KNOWN_HOUSES = {'us-114': 'US · Normal · Horde'};
+// Blizzard's API names each house's faction but doesn't say which ruleset a
+// house serves. Houses come in groups of three (Alliance, Horde, Blackwater).
+// 114 is known to be Normal Horde; groups are matched to ruleset ids in order
+// (1 PvP, 2 Normal, 3 Roleplay). The last two groups aren't identified yet.
+const HOUSE_GROUPS = [
+  {ruleset: 'PvP',      houses: {110: 'Alliance', 113: 'Horde', 116: 'Blackwater'}},
+  {ruleset: 'Normal',   houses: {111: 'Alliance', 114: 'Horde', 117: 'Blackwater'}},
+  {ruleset: 'Roleplay', houses: {112: 'Alliance', 115: 'Horde', 118: 'Blackwater'}},
+  {ruleset: 'Group 4',  houses: {119: 'Alliance', 120: 'Horde', 121: 'Blackwater'}},
+  {ruleset: 'Group 5',  houses: {123: 'Alliance', 124: 'Horde', 125: 'Blackwater'}},
+];
+const DEFAULT_HOUSE = 110; // Alliance PvP
+function houseInfo(h){
+  const g = HOUSE_GROUPS.findIndex(g => h.house in g.houses);
+  const faction = (h.name || '').replace(/ Auction House$/, '') || (g >= 0 ? HOUSE_GROUPS[g].houses[h.house] : 'House ' + h.house);
+  return {order: g < 0 ? 99 : g, faction, ruleset: g < 0 ? '?' : HOUSE_GROUPS[g].ruleset};
+}
+const FACTION_ORDER = {Alliance: 0, Horde: 1, Blackwater: 2};
 let staticReady = null, houses = [];
 
 function loadScript(src){
@@ -119,9 +136,12 @@ async function staticBoot(){
     fetchOK(RECIPES_URL).then(r => r.text()),
     fetchOK('data/houses.json', {cache: 'no-cache'}).then(r => r.json())]);
   const err = fsaLoadRecipes(recText); if (err) throw new Error(err);
-  houses = hs.houses || [];
+  houses = (hs.houses || []).map(h => ({...h, ...houseInfo(h)}))
+    .sort((a, b) => a.order - b.order || (FACTION_ORDER[a.faction] ?? 9) - (FACTION_ORDER[b.faction] ?? 9));
   if (!houses.length) throw new Error('No auction house data published yet');
-  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(KNOWN_HOUSES[h.region+'-'+h.house] || (h.region.toUpperCase()+' · '+(h.name ? h.name+' #'+h.house : 'house '+h.house)))}</option>`).join('');
+  $('#house').innerHTML = houses.map(h => `<option value="${esc(h.file)}">${esc(h.faction)} · ${esc(h.ruleset)} (${esc(h.region.toUpperCase())})</option>`).join('');
+  const def = houses.find(h => h.house === DEFAULT_HOUSE);
+  if (def) $('#house').value = def.file;
   const saved = restore().house; if (saved && houses.some(h => h.file === saved)) $('#house').value = saved;
   $('#houseWrap').hidden = false;
   $('#refresh').textContent = 'Reload prices';
